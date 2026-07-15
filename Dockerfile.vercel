@@ -1,0 +1,35 @@
+# Dockerfile.vercel — deploy this Spring Boot app on Vercel's container Functions
+# Docs: https://vercel.com/blog/dockerfile-on-vercel
+#
+# Vercel detects this file at the project root, builds the image, pushes it to
+# the Vercel Container Registry, and serves it from a Function. Your app just
+# needs to speak HTTP and listen on $PORT (Vercel defaults this to 80).
+
+# ---------- Build stage ----------
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /app
+
+# Cache dependencies separately from source so code changes don't
+# force a full re-download every build
+COPY pom.xml .
+RUN mvn -B dependency:go-offline
+
+COPY src ./src
+RUN mvn -B clean package -DskipTests
+
+# ---------- Runtime stage ----------
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+
+# Non-root user for the container
+RUN addgroup -S spring && adduser -S spring -G spring
+USER spring
+
+COPY --from=build /app/target/*.jar app.jar
+
+# Vercel injects PORT at runtime (defaults to 80 if unset).
+# Spring Boot needs server.port set explicitly since it doesn't read $PORT itself.
+ENV PORT=80
+EXPOSE 80
+
+ENTRYPOINT ["sh", "-c", "java -Dserver.port=${PORT} -jar app.jar"]
